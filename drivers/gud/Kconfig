@@ -9,6 +9,14 @@ config SOC_EXYNOS5433_TBASE302
 config SOC_EXYNOS5430_TBASE302
         bool "Enable tbase302"
         default n
+
+if SOC_EXYNOS5410
+source "drivers/gud/gud-exynos5410/Kconfig"
+endif
+
+if SOC_EXYNOS5420
+source "drivers/gud/gud-exynos5420/Kconfig"
+endif
 		
 if SOC_EXYNOS5422
 source "drivers/gud/gud-exynos5422/Kconfig"
