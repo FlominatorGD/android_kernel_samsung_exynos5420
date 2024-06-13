@@ -159,6 +159,7 @@ extern bool is_set_abb_first(enum asv_type_id target_type, unsigned int old_freq
 
 /* define function for initialize of SoC */
 extern int exynos5410_init_asv(struct asv_common *asv_info);
+extern int exynos5420_init_asv(struct asv_common *asv_info);
 extern int exynos5422_init_asv(struct asv_common *asv_info);
 extern int exynos5430_init_asv(struct asv_common *asv_info);
 extern int exynos5_init_asv(struct asv_common *asv_info);
