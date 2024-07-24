@@ -136,86 +136,59 @@ static int lp855x_init_registers(struct lp855x *lp)
 
 static void lp855x_pwm_ctrl(struct lp855x *lp, int br, int max_br)
 {
-	unsigned int period = lp->pdata->period_ns;
-	unsigned int duty = br * period / max_br;
+    unsigned int period = lp->pdata->period_ns;
+    uint32_t duty = lp->lth_brightness + (br - lp->min_brightness) * (lp->uth_brightness - lp->lth_brightness) / (max_br - lp->min_brightness);
 
-	if (br <= 0) {
-		pwm_config(lp->pwm, 0, period);
-		pwm_disable(lp->pwm);
-		lp->pre_duty = 0;
-	} else {
-		if (br < lp->min_brightness)
-			br = lp->min_brightness;
+    if (br <= 0) {
+        pwm_config(lp->pwm, 0, period);
+        pwm_disable(lp->pwm);
+        lp->pre_duty = 0;
+    } else {
+        if (br < lp->min_brightness)
+            br = lp->min_brightness;
 
-		duty = lp->lth_brightness +
-			( (br - lp->min_brightness)
-			* (lp->uth_brightness - lp->lth_brightness)
-			/ (max_br - lp->min_brightness) );
-
-		dev_dbg(lp->dev, "lth=%d, uth=%d, min=%d, max=%d, duty=%d, pre_duty = %d\n",
-			lp->lth_brightness, lp->uth_brightness,
-			lp->min_brightness, max_br, duty, lp->pre_duty);
-
-
-		if(abs(lp->pre_duty - duty) > (10000000/period*5)) {
-			lp->pre_duty = duty;
-			pwm_config(lp->pwm, duty, period);
-			pwm_enable(lp->pwm);
-		} else {
-			dev_info(lp->dev, "pwm is not changed pre_duty =%d, duty = %d\n", lp->pre_duty, duty);
-		}
-	}
+        if(abs(lp->pre_duty - duty) > (10000000/period*10)) {
+            lp->pre_duty = duty;
+            pwm_config(lp->pwm, duty, period);
+            pwm_enable(lp->pwm);
+        }
+    }
 #ifdef CONFIG_LCD_LSL122DL01
-	duty = (duty*100) / period;
-	if (duty == 0 && br > 0)
-		duty = 1;
-	secfb_notifier_call_chain(SECFB_EVENT_BL_UPDATE, &duty);
+    // No duty calculation needed
+    secfb_notifier_call_chain(SECFB_EVENT_BL_UPDATE, &lp->pre_duty);
 #endif
 }
 
 static int lp855x_bl_update_status(struct backlight_device *bl)
 {
-	int lp855x_brightness;
-	struct lp855x *lp = bl_get_data(bl);
+    int lp855x_brightness;
+    struct lp855x *lp = bl_get_data(bl);
 
-	lp855x_brightness = bl->props.brightness;
+    lp855x_brightness = bl->props.brightness;
 
-	if (bl->props.state & BL_CORE_SUSPENDED ||
-	    bl->props.state & BL_CORE_FBBLANK) {
-		lp855x_brightness = 0;
-		lp->pre_duty = 0;
-	}
+    if (bl->props.state & (BL_CORE_SUSPENDED | BL_CORE_FBBLANK)) {
+        lp855x_brightness = 0;
+        lp->pre_duty = 0;
+    }
 
-	dev_info(lp->dev, "%s : state = %x, brightness = %d, real_br = %d\n",
-			__func__, bl->props.state, bl->props.brightness,
-			lp855x_brightness);
+    if (lp->pdata->set_power && lp->power == 0) {
+        lp->pdata->set_power(1);
+        lp855x_init_registers(lp);
+        lp->power = 1;
+    }
 
-	if (lp->pdata->set_power &&
-	    lp->power == 0 && lp855x_brightness == 0)
-		return 0;
+    if (lp855x_brightness == 0) {
+        lp->pdata->set_power(0);
+        lp->power = 0;
+    } else {
+        if (lp->mode == PWM_BASED) {
+            lp855x_pwm_ctrl(lp, lp855x_brightness, bl->props.max_brightness);
+        } else if (lp->mode == REGISTER_BASED) {
+            lp855x_write_byte(lp, LP855X_BRIGHTNESS_CTRL, lp855x_brightness);
+        }
+    }
 
-	if (lp->pdata->set_power && lp->power == 0) {
-		lp->pdata->set_power(1);
-		lp855x_init_registers(lp);
-		lp->power = 1;
-	}
-
-	if (lp->mode == PWM_BASED) {
-		int br = lp855x_brightness;
-		int max_br = bl->props.max_brightness;
-		lp855x_pwm_ctrl(lp, br, max_br);
-
-	} else if (lp->mode == REGISTER_BASED) {
-		u8 val = lp855x_brightness;
-		lp855x_write_byte(lp, LP855X_BRIGHTNESS_CTRL, val);
-	}
-
-	if (lp->pdata->set_power && lp855x_brightness == 0) {
-		lp->pdata->set_power(0);
-		lp->power = 0;
-	}
-
-	return 0;
+    return 0;
 }
 
 static int lp855x_bl_get_brightness(struct backlight_device *bl)
